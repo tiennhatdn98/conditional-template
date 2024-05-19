@@ -15,13 +15,18 @@ ${if ticket.ticket_count}[${ticket.ticket_order} / ${ticket.ticket_count}]${end 
 Hello, this is your ticket number 
 */
 
-function execute() {
-  const ifRegex = /<if \([^)]*\)>.*?<endif>/;
+function templateParser() {
+  const Parser = require("expr-eval").Parser;
+  const parser = new Parser();
+
+  const ifRegex = /<if \([^)]*\)>.*?<else>?.*?<endif>/;
   const ifStack = [];
   const elseStack = [];
 
-  const string =
-    "Hi <<if (0 > 0)>[1 / 2]<else>[2 / 1]<endif>>This is your ticket";
+  const string = `
+    Hi <if (0 == 0)>[1 > 2]<else>[2 > 1]<endif>This is your ticket!
+    Ahihi!<if (0 == 0)>[2/3]<else>[3/4]<endif>Ahhi
+  `;
 
   function hasCondition() {
     return ifStack.length;
@@ -73,7 +78,7 @@ function execute() {
   let prev = "";
 
   for (const [i, c] of string.split("").entries()) {
-    function handle() {
+    function update() {
       if (isConditionalStatement) {
         conditionalStatement += c;
       }
@@ -94,9 +99,10 @@ function execute() {
     switch (c) {
       case SYNTAX.OPEN_KEY:
         if (isOpenKey) {
+          // Check consecutive "<"
           finalResult += c;
           keyword = "";
-        } else {
+        } else if (!isElseResult || !isIfResult) {
           isOpenKey = true;
           isKeyword = true;
           if (keyword.length > maxKeywordLength) {
@@ -104,7 +110,7 @@ function execute() {
             keyword = "";
           }
         }
-        handle();
+        update();
         break;
 
       case SYNTAX.CLOSE_KEY:
@@ -114,10 +120,10 @@ function execute() {
         if (prev === SYNTAX.CLOSE_PARENTHESE) {
           isConditionalStatement = false;
           isIf = false;
-          handle();
+          update();
           isIfResult = true;
         } else {
-          handle();
+          update();
         }
 
         isKeyword = false;
@@ -125,21 +131,21 @@ function execute() {
 
       case SYNTAX.OPEN_PARENTHESE:
         isConditionalStatement = true;
-        handle();
+        update();
         break;
 
       case SYNTAX.CLOSE_PARENTHESE:
-        handle();
+        update();
         break;
 
       case SYNTAX.SPACE:
         isKeyword = false;
         keyword = "";
-        handle();
+        update();
         break;
 
       default:
-        handle();
+        update();
         break;
     }
 
@@ -161,8 +167,6 @@ function execute() {
           isIfElseStatement = false;
           isElse = false;
 
-          console.log({ conditionalStatement, ifResult, elseResult });
-
           if (hasElse()) {
             elseStack.pop();
             ifResult = ifResult.substring(
@@ -181,12 +185,15 @@ function execute() {
             );
           }
 
-          conditionResult = eval(conditionalStatement) ? ifResult : elseResult;
+          const comparisionExpr = parser.parse(conditionalStatement);
+
+          conditionResult = comparisionExpr.evaluate() ? ifResult : elseResult;
           finalResult += conditionResult;
 
           isIfResult = false;
           isElseResult = false;
 
+          conditionalStatement = "";
           ifResult = "";
           elseResult = "";
         } else {
@@ -200,8 +207,7 @@ function execute() {
         elseStack.push(i);
         isIfResult = false;
         isElse = true;
-        // ifResult = ifResult.substring(0, ifResult.length - SYNTAX.ELSE.length);
-        handle();
+        update();
         isElseResult = true;
         keyword = "";
         isKeyword = false;
@@ -231,7 +237,7 @@ function execute() {
   }
 }
 
-execute();
+templateParser();
 
 // eval("(0 > 0");
 
